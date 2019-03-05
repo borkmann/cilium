@@ -39,7 +39,8 @@ TEST_LDFLAGS=-ldflags "-X github.com/cilium/cilium/pkg/kvstore.consulDummyAddres
 TEST_UNITTEST_LDFLAGS= -ldflags "-X github.com/cilium/cilium/pkg/kvstore.consulDummyConfigFile=/tmp/cilium-consul-certs/cilium-consul.yaml \
 	-X github.com/cilium/cilium/pkg/testutils.CiliumRootDir=$(ROOT_DIR)"
 
-all: precheck build postcheck
+#all: precheck build postcheck
+all: build postcheck
 	@echo "Build finished."
 
 build: $(SUBDIRS)

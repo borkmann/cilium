@@ -25,6 +25,7 @@ XDP_DEV=$7
 XDP_MODE=$8
 MTU=$9
 IPSEC=${10}
+MASQ=${11}
 
 ID_HOST=1
 ID_WORLD=2
@@ -251,15 +252,23 @@ function bpf_load()
 	OUT=$5
 	SEC=$6
 	CALLS_MAP=$7
+	SKIP=$8
 
 	NODE_MAC=$(ip link show $DEV | grep ether | awk '{print $2}')
 	NODE_MAC="{.addr=$(mac2array $NODE_MAC)}"
 
-	OPTS="${OPTS} -DNODE_MAC=${NODE_MAC} -DCALLS_MAP=${CALLS_MAP}"
-	bpf_compile $IN $OUT obj "$OPTS"
+	if [ "$WHERE" == "ingress" ]; then
+		OPTS_DIR="-DBPF_PKT_DIR=1"
+	else
+		OPTS_DIR="-DBPF_PKT_DIR=0"
+	fi
 
-	tc qdisc del dev $DEV clsact 2> /dev/null || true
-	tc qdisc add dev $DEV clsact
+	OPTS="${OPTS} ${OPTS_DIR} -DNODE_MAC=${NODE_MAC} -DCALLS_MAP=${CALLS_MAP}"
+	bpf_compile $IN $OUT obj "$OPTS"
+	if [ "$SKIP" != "no_qdisc_reset" ]; then
+		tc qdisc del dev $DEV clsact 2> /dev/null || true
+		tc qdisc add dev $DEV clsact
+	fi
 	cilium-map-migrate -s $OUT
 	set +e
 	tc filter add dev $DEV $WHERE prio 1 handle 1 bpf da obj $OUT sec $SEC
@@ -400,7 +409,15 @@ if [ "$MODE" = "direct" ] || [ "$MODE" = "ipvlan" ]; then
 		CALLS_MAP=cilium_calls_netdev_${ID_WORLD}
 		POLICY_MAP="cilium_policy_reserved_${ID_WORLD}"
 		OPTS="-DSECLABEL=${ID_WORLD} -DPOLICY_MAP=${POLICY_MAP}"
-		bpf_load $NATIVE_DEV "$OPTS" "ingress" bpf_netdev.c bpf_netdev.o from-netdev $CALLS_MAP
+		if [ "$MASQ" = "true" ]; then
+			SECTION="masq-pre"
+		else
+			SECTION="from-netdev"
+		fi
+		bpf_load $NATIVE_DEV "$OPTS" "ingress" bpf_netdev.c bpf_netdev.o $SECTION $CALLS_MAP
+		if [ "$MASQ" = "true" ]; then
+			bpf_load $NATIVE_DEV "$OPTS" "egress" bpf_netdev.c bpf_netdev.o masq $CALLS_MAP "no_qdisc_reset"
+		fi
 
 		echo "$NATIVE_DEV" > $RUNDIR/device.state
 	fi

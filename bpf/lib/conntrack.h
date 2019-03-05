@@ -27,6 +27,7 @@
 #include "dbg.h"
 #include "l4.h"
 #include "nat46.h"
+#include "nat.h"
 
 #define CT_DEFAULT_LIFETIME_TCP		21600	/* 6 hours */
 #define CT_DEFAULT_LIFETIME_NONTCP	60	/* 60 seconds */
@@ -60,8 +61,6 @@
 
 #ifdef CONNTRACK
 
-#define TUPLE_F_OUT		0	/* Outgoing flow */
-#define TUPLE_F_IN		1	/* Incoming flow */
 #define TUPLE_F_RELATED		2	/* Flow represents related packets */
 #define TUPLE_F_SERVICE		4	/* Flow represents service/slave map */
 
@@ -591,6 +590,8 @@ static inline void __inline__ ct_delete6(void *map, struct ipv6_ct_tuple *tuple,
 
 	if ((err = map_delete_elem(map, tuple)) < 0)
 		cilium_dbg(skb, DBG_ERROR_RET, BPF_FUNC_map_delete_elem, err);
+	else
+		snat_v6_delete_tuples(tuple);
 }
 
 static inline void __inline__ ct_update6_slave(void *map,
@@ -668,6 +669,8 @@ static inline void __inline__ ct_delete4(void *map, struct ipv4_ct_tuple *tuple,
 
 	if ((err = map_delete_elem(map, tuple)) < 0)
 		cilium_dbg(skb, DBG_ERROR_RET, BPF_FUNC_map_delete_elem, err);
+	else
+		snat_v4_delete_tuples(tuple);
 }
 
 static inline void __inline__ ct_update4_slave(void *map,
