@@ -243,6 +243,13 @@ func (e *etcdClient) GetLeaseID() client.LeaseID {
 	return l
 }
 
+// closeSession closes the current session.
+func (e *etcdClient) closeSession() {
+	e.RWMutex.RLock()
+	e.session.Orphan()
+	e.RWMutex.RUnlock()
+}
+
 func (e *etcdClient) renewSession() error {
 	<-e.firstSession
 	<-e.session.Done()
@@ -701,6 +708,9 @@ func (e *etcdClient) Update(ctx context.Context, key string, value []byte, lease
 	if lease {
 		duration := spanstat.Start()
 		_, err := e.client.Put(ctx, key, string(value), client.WithLease(e.GetLeaseID()))
+		if err == v3rpcErrors.ErrLeaseNotFound {
+			e.closeSession()
+		}
 		increaseMetric(key, metricSet, "Update", duration.EndError(err).Total(), err)
 		return Hint(err)
 	}
@@ -719,6 +729,9 @@ func (e *etcdClient) CreateOnly(ctx context.Context, key string, value []byte, l
 	txnresp, err := e.client.Txn(ctx).If(cond).Then(*req).Commit()
 	increaseMetric(key, metricSet, "CreateOnly", duration.EndError(err).Total(), err)
 	if err != nil {
+		if err == v3rpcErrors.ErrLeaseNotFound {
+			e.closeSession()
+		}
 		return Hint(err)
 	}
 
@@ -737,6 +750,9 @@ func (e *etcdClient) CreateIfExists(condKey, key string, value []byte, lease boo
 	txnresp, err := e.client.Txn(ctx.TODO()).If(cond).Then(*req).Commit()
 	increaseMetric(key, metricSet, "CreateIfExists", duration.EndError(err).Total(), err)
 	if err != nil {
+		if err == v3rpcErrors.ErrLeaseNotFound {
+			e.closeSession()
+		}
 		return Hint(err)
 	}
 
